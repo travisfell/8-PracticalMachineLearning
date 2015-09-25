@@ -1,0 +1,64 @@
+---
+title: "Classe Prediction"
+author: "Travis Fell"
+date: "September 24, 2015"
+output: html_document
+---
+#I. Introduction
+This analysis sets out to answer the question posed by the assignment: what are the predictors of a correctly executed barbell lift. 
+
+#II. Set Up Work
+First, we'll start out by loading libraries, loading data and doing a bit of exploratory analysis. 
+```{r}
+library(caret)
+library(ggplot2)
+library(dplyr)
+train <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+str(train)
+summary(train)
+View(train)
+colnames(train)
+View(test)
+table(train$classe)
+count(train, classe)
+
+```
+Notably, in the train data set, about 25% of the records indicate a correctly done exercise. 
+
+#III. Predicting Results
+Now we will set about constructing our model. 
+
+
+## A. Cross Validation and Out of Sample Error
+
+## B. Selecting Predictors
+Because there are nearly 160 different variables in this data, we will do some preprocessing with principal components analysis to find and combine like variables. 
+```{r}
+M <- abs(cor(train[,3:159])) # find correlation b/t all variables except record number, user_name and classe column
+# need to change factor variables that should be numeric to numeric columns
+
+
+```
+
+
+Building the Model
+
+Running the Numbers
+
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+summary(cars)
+```
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+plot(cars)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -60,6 +60,8 @@ library(ElemStatLearn)
 data(vowel.train)
 data(vowel.test) 
 set.seed(33833)
-vowel.test
 vowel.test$y <- as.factor(vowel.test$y)
 vowel.train$y <- as.factor(vowel.train$y)
+q5fit <- train(y~., data = vowel.train, method = "rf", prox=TRUE)
+varImp(q5fit)
+
