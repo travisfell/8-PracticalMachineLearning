@@ -5,16 +5,21 @@ date: "September 24, 2015"
 output: html_document
 ---
 #I. Introduction
-This analysis sets out to answer the question posed by the assignment: what are the predictors of a correctly executed barbell lift. 
+ 
 
 #II. Set Up Work
 First, we'll start out by loading libraries, loading data and doing a bit of exploratory analysis. 
 ```{r}
+setwd("C:/Users/fellt/Desktop/Data Science/Coursera Data Science Specialization/08 - Practical Machine Learning/8-PracticalMachineLearning")
 library(caret)
+library(randomForest)
 library(ggplot2)
 library(dplyr)
+library(parallel, quietly=T)
+library(doParallel, quietly=T)
 train <- read.csv("pml-training.csv", stringsAsFactors = FALSE, na.strings=c("", "NA"))
 test <- read.csv("pml-testing.csv", stringsAsFactors = FALSE, na.strings=c("", "NA"))
+train$classe <- as.factor(train$classe)
 str(train)
 summary(train)
 View(train)
@@ -30,39 +35,108 @@ Notably, in the train data set, about 25% of the records indicate a correctly do
 # filter out columns with majority NA values
 train <- train[sapply(train, function(x) !any(is.na(x)))] 
 test <- test[sapply(test, function(x) !any(is.na(x)))]
+
+summary(train)
+
 ```
 
 #III. Predicting Results
-Now we will set about constructing our model. 
+Now we will set about constructing our model and making predictions using that model.
+
+# Defining the Question
+This analysis sets out to answer the question posed by the assignment: given the way a participant does an exercise, will they do it correctly? To perform this analysis, we will examine the training data set to identify the the predictors of a correctly executed barbell lift, validate the model against a subset of the training set, then run the model against the test set. 
+
+1. Question
+2. Input Data
+3. Features
+4. Algorithm
+5. Parameters
+6. Evaluation
+
+## Selecting Predictors
+Because there are nearly 60 different non-NA variables in this data, we will do some preprocessing with principal components analysis to find and combine like variables. 
 
 
-## A. Cross Validation and Out of Sample Error
-
-
-
-## B. Selecting Predictors
-Because there are nearly 60 different variables in this data, we will do some preprocessing with principal components analysis to find and combine like variables. 
 ```{r}
+set.seed(333)
+featurePlot(x = train[,c("total_accel_belt", "total_accel_arm", "total_accel_forearm", "total_accel_dumbbell")], y = train$classe, plot = "pairs")
+
+
 M <- abs(cor(train[,8:59])) # find correlation b/t all variables except record number, user_name, timestamp columns and classe column
 diag(M) <- 0
 pred <- which(M >.8, arr.ind = TRUE)
 highCorVar <- unique(pred[,2])
-highCorVar <- highCorVar + 7
+highCorVar <- highCorVar + 7 # need to get the column numbers back in sync w/the train set
 
 trainPred <- train[,highCorVar]
+prComp <- prcomp(trainPred)
 
-plot(train$total_accel_belt, train$total_accel_dumbbell)
+plot(prComp$x[,1], prComp$x[,2])
+
+
+# split the training set into 70/30 training-validation sets
+inTrain <- createDataPartition(train$classe, p = .7, list = FALSE)
+train2 <- train[inTrain,]
+validation <- train[-inTrain,]
+
+
+#need to manage resampling to improve processing speed
+fitControl <- trainControl(method = "none")
+tgrid <- expand.grid(mtry=c(6)) 
+
+# turn on parallel processing to help improve performance
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+
+#preProc <- preProcess(train2[,8:59], method = "pca", pcaComp = 6)
+trainPC <- predict(preProc, train2[,8:59])
+#modelFit <- train(train2$classe ~ ., data = trainPC, method = "rf", prox = TRUE) #  verbose = FALSE, trControl = fitControl, tuneGrid = tgrid)
+
+train2TestInx <- createDataPartition(y=train2$classe, p=.05, list = FALSE)
+train2Test <- train2[train2TestInx,]
+
+modelFitTest <- train(classe ~ ., data = train2[8:60], method = "rf", preProcess = "pca", prox = TRUE) #trControl = fitControl, tuneGrid = tgrid, prox = TRUE)
+
+modelFitTest3 <- randomForest(classe ~., train2[,8:60])
+
+# turn off parallel processing
+stopCluster(cluster)
+
+print(modelFitTest3)
+
+#use the model to predict the validation set
+validationPred <- predict(modelFitTest3, validation)
+summary(validationPred)
+table(validationPred, validation$classe)
 
 ```
+Which method to use? 
+Apply parallel processing techniques (have 4 cores, use 2)
+Note: use SaveRDS to save models once created. 
 
-Building the Model
 
+Now that we've narrowed down the number of potential predictors to a more manageable number, let's have a quick look at how this data looks
+
+To predict X, use data related to X. 
+
+## Cross Validation
+Cut the training set into a training and validation set. 
+
+
+## Building the Model
+Note: Follow the longer process from the slides to break down the process into component parts and debug. 
 ```{r}
 modelTrain <- train[,8:60]
 modelFit <- train(modelTrain$classe ~ ., method = "glm", preProcess = "pca", data = modelTrain)
 ```
 
-Making Predictions
+## Estimating Out of Sample Error
+Using the model fit above, we will estimate the out of sample error using the validation set. 
+
+## Making Predictions
+We will now run the model against the test set to make predictions about the classe variable as well as identify the out of sample error to that performed on the validation set above. 
+
+
 
 
 
@@ -71,9 +145,6 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
-```{r}
-summary(cars)
-```
 
 You can also embed plots, for example:
 
