@@ -13,8 +13,8 @@ First, we'll start out by loading libraries, loading data and doing a bit of exp
 library(caret)
 library(ggplot2)
 library(dplyr)
-train <- read.csv("pml-training.csv")
-test <- read.csv("pml-testing.csv")
+train <- read.csv("pml-training.csv", stringsAsFactors = FALSE, na.strings=c("", "NA"))
+test <- read.csv("pml-testing.csv", stringsAsFactors = FALSE, na.strings=c("", "NA"))
 str(train)
 summary(train)
 View(train)
@@ -24,7 +24,13 @@ table(train$classe)
 count(train, classe)
 
 ```
-Notably, in the train data set, about 25% of the records indicate a correctly done exercise. 
+Notably, in the train data set, about 25% of the records indicate a correctly done exercise. Also, there are a large number of columns with NA in almost all records. So, we are going to remove those for this analysis.
+
+```{r}
+# filter out columns with majority NA values
+train <- train[sapply(train, function(x) !any(is.na(x)))] 
+test <- test[sapply(test, function(x) !any(is.na(x)))]
+```
 
 #III. Predicting Results
 Now we will set about constructing our model. 
@@ -32,19 +38,33 @@ Now we will set about constructing our model.
 
 ## A. Cross Validation and Out of Sample Error
 
-## B. Selecting Predictors
-Because there are nearly 160 different variables in this data, we will do some preprocessing with principal components analysis to find and combine like variables. 
-```{r}
-M <- abs(cor(train[,3:159])) # find correlation b/t all variables except record number, user_name and classe column
-# need to change factor variables that should be numeric to numeric columns
 
+
+## B. Selecting Predictors
+Because there are nearly 60 different variables in this data, we will do some preprocessing with principal components analysis to find and combine like variables. 
+```{r}
+M <- abs(cor(train[,8:59])) # find correlation b/t all variables except record number, user_name, timestamp columns and classe column
+diag(M) <- 0
+pred <- which(M >.8, arr.ind = TRUE)
+highCorVar <- unique(pred[,2])
+highCorVar <- highCorVar + 7
+
+trainPred <- train[,highCorVar]
+
+plot(train$total_accel_belt, train$total_accel_dumbbell)
 
 ```
 
-
 Building the Model
 
-Running the Numbers
+```{r}
+modelTrain <- train[,8:60]
+modelFit <- train(modelTrain$classe ~ ., method = "glm", preProcess = "pca", data = modelTrain)
+```
+
+Making Predictions
+
+
 
 
 This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
