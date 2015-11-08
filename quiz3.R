@@ -44,16 +44,25 @@ print(modFit$finalModel)
 predict(modFit, newdata = newdata)
 
 #  question 4
+library(ggplot2)
 library(ElemStatLearn)
 data(SAheart)
-set.seed(8484)
-train = sample(1:dim(SAheart)[1],size=dim(SAheart)[1]/2,replace=F)
+set.seed(13234)
+#SAheart$chd <- as.factor(SAheart$chd) #previously got error message when training model
+train = sample(1:dim(SAheart)[1],size=dim(SAheart)[1]/2,replace=F) #sampling 50% of the population
 trainSA = SAheart[train,]
 testSA = SAheart[-train,]
-set.seed(13234)
-q4fit <- glm(chd ~ age + alcohol + obesity + tobacco + typea + ldl, data = trainSA)
 missClass = function(values,prediction){sum(((prediction > 0.5)*1) != values)/length(values)}
-missClass(trainSA, q4fit)
+#q4fit <- glm(chd ~ age + alcohol + obesity + tobacco + typea + ldl, data = trainSA, family = "binomial")
+q4fit <- train(chd ~ age + alcohol + obesity + tobacco + typea + ldl, data = trainSA, method = "glm", family = "binomial")
+predTrain <- predict(q4fit, trainSA)
+predTest <- predict(q4fit, testSA)
+missClass(trainSA$chd, predTrain)
+missClass(testSA$chd, predTest)
+
+sum(((prediction > 0.5)*1) != values)/length(values)
+sum(((predTrain > 0.5)*1) != trainSA)/length(trainSA)
+
 
 #question 5
 library(ElemStatLearn)

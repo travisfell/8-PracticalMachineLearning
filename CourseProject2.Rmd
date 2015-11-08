@@ -1,0 +1,203 @@
+---
+title: "Classe Prediction"
+author: "Travis Fell"
+date: "September 24, 2015"
+output: html_document
+---
+#I. Introduction
+ 
+
+#II. Set Up Work
+First, we'll start out by loading libraries, loading data and doing a bit of exploratory analysis. 
+```{r}
+setwd("C:/Users/fellt/Desktop/Data Science/Coursera Data Science Specialization/08 - Practical Machine Learning/8-PracticalMachineLearning")
+set.seed(333)
+library(caret)
+library(randomForest)
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(parallel, quietly=T)
+library(doParallel, quietly=T)
+train <- read.csv("pml-training.csv", stringsAsFactors = FALSE, na.strings=c("", "NA"))
+test <- read.csv("pml-testing.csv", stringsAsFactors = FALSE, na.strings=c("", "NA"))
+train$classe <- as.factor(train$classe)
+str(train)
+summary(train)
+View(train)
+colnames(train)
+View(test)
+table(train$classe)
+count(train, classe)
+
+```
+Notably, in the train data set, about 25% of the records indicate a correctly done exercise. Also, there are a large number of columns with NA in almost all records. So, we are going to remove those for this analysis.
+
+```{r}
+# filter out columns with majority NA values
+train <- train[sapply(train, function(x) !any(is.na(x)))] 
+test <- test[sapply(test, function(x) !any(is.na(x)))]
+
+summary(train)
+dim(train)
+
+# find columns with more than 15% of rows = 0 and remove
+  zerotest <<- NULL
+  for(i in 1:length(train))
+    {
+    zerotest <<- c(zerotest, nrow(train[train[,i] == 0,])/nrow(train))
+  }
+removecols <- colnames(train[,which(zerotest >.15)])
+train[,removecols] <- list(NULL)
+
+# find records with any 0 values and remove
+#replace all zeros w/NA
+train[train == 0] <- NA
+train <- train[complete.cases(train),]
+
+```
+
+#III. Predicting Results
+Now we will set about constructing our model and making predictions using that model.
+
+# Defining the Question
+This analysis sets out to answer the question posed by the assignment: given the way a participant does an exercise, will they do it correctly? To perform this analysis, we will examine the training data set to identify the the predictors of a correctly executed barbell lift, validate the model against a subset of the training set, then run the model against the test set. 
+
+1. Question
+2. Input Data
+3. Features
+4. Algorithm
+5. Parameters
+6. Evaluation
+
+## Selecting Predictors
+Because there are nearly 60 different non-NA variables in this data, we will do some preprocessing with principal components analysis to find and combine like variables. 
+
+
+```{r}
+#ID principle components for training set
+log.train <-log(abs(train[,8:59]))
+train.pca <- prcomp(train[,8:59], center = TRUE, scale. = TRUE) 
+print(train.pca)
+summary(train.pca)
+head(train.pca, n = 3)
+
+dim(train.pca$x)
+linearFit <- lm(classe ~ train.pca$x[,1] + train.pca$x[,2], data=train)
+
+#set up a multiple linear regression
+train$classe <- as.character(train$classe)
+
+which(is.infinite(train[,1:53]))
+
+mrm <- lm(classe~., data = train[,8:53])
+summary(train[,8:53])
+str(train[,8:53])
+summary(mrm)
+
+# turn on parallel processing to help improve performance
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+
+#try boosting models
+modgbm <- train(classe ~., method = "gbm", data = train[,8:60])
+library(ada)
+
+#try tree model
+modtree <- train(classe ~., method = "rpart", data = train[,8:60], verbose = FALSE) #did not work
+
+#ID principal components using caret
+preProc <- preProcess(train[,8:59], method = c("center", "scale", "pca"), pcaComp = 2)
+trainPC <- predict(preProc, train[,8:59])
+modelFit <- train(train$classe ~ ., method = "gbm", data = trainPC)
+
+
+M <- abs(cor(train[,8:59])) # find correlation b/t all variables except record number, user_name, timestamp columns and classe column
+diag(M) <- 0
+pred <- which(M >.8, arr.ind = TRUE)
+highCorVar <- unique(pred[,2])
+highCorVar <- highCorVar + 7 # need to get the column numbers back in sync w/the train set
+
+trainPred <- train[,highCorVar]
+prComp <- prcomp(trainPred)
+
+plot(prComp$x[,1], prComp$x[,2])
+
+
+# split the training set into 70/30 training-validation sets
+inTrain <- createDataPartition(train$classe, p = .7, list = FALSE)
+train2 <- train[inTrain,]
+validation <- train[-inTrain,]
+
+
+#need to manage resampling to improve processing speed
+fitControl <- trainControl(method = "none")
+tgrid <- expand.grid(mtry=c(6)) 
+
+
+
+#preProc <- preProcess(train2[,8:59], method = "pca", pcaComp = 6)
+trainPC <- predict(preProc, train2[,8:59])
+#modelFit <- train(train2$classe ~ ., data = trainPC, method = "rf", prox = TRUE) #  verbose = FALSE, trControl = fitClontrol, tuneGrid = tgrid)
+
+train2TestInx <- createDataPartition(y=train2$classe, p=.05, list = FALSE)
+train2Test <- train2[train2TestInx,]
+
+modelFitTest <- train(classe ~ ., data = train2[8:60], method = "rf", preProcess = "pca", prox = TRUE) #trControl = fitControl, tuneGrid = tgrid, prox = TRUE)
+
+modelFitTest3 <- randomForest(classe ~., train2[,8:60])
+
+# turn off parallel processing
+stopCluster(cluster)
+
+print(modelFitTest3)
+
+#use the model to predict the validation set
+validationPred <- predict(modelFitTest3, validation)
+summary(validationPred)
+table(validationPred, validation$classe)
+
+```
+Which method to use? 
+Apply parallel processing techniques (have 4 cores, use 2)
+Note: use SaveRDS to save models once created. 
+
+
+Now that we've narrowed down the number of potential predictors to a more manageable number, let's have a quick look at how this data looks
+
+To predict X, use data related to X. 
+
+## Cross Validation
+Cut the training set into a training and validation set. 
+
+
+## Building the Model
+Note: Follow the longer process from the slides to break down the process into component parts and debug. 
+```{r}
+modelTrain <- train[,8:60]
+modelFit <- train(modelTrain$classe ~ ., method = "glm", preProcess = "pca", data = modelTrain)
+```
+
+## Estimating Out of Sample Error
+Using the model fit above, we will estimate the out of sample error using the validation set. 
+
+## Making Predictions
+We will now run the model against the test set to make predictions about the classe variable as well as identify the out of sample error to that performed on the validation set above. 
+
+
+
+
+
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+You can also embed plots, for example:
+
+```{r, echo=FALSE}
+plot(cars)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
