@@ -11,9 +11,11 @@ output: html_document
 First, we'll start out by loading libraries, loading data and doing a bit of exploratory analysis. 
 ```{r}
 setwd("C:/Users/fellt/Desktop/Data Science/Coursera Data Science Specialization/08 - Practical Machine Learning/8-PracticalMachineLearning")
+set.seed(333)
 library(caret)
 library(randomForest)
 library(ggplot2)
+library(plyr)
 library(dplyr)
 library(parallel, quietly=T)
 library(doParallel, quietly=T)
@@ -58,8 +60,37 @@ Because there are nearly 60 different non-NA variables in this data, we will do 
 
 
 ```{r}
-set.seed(333)
-featurePlot(x = train[,c("total_accel_belt", "total_accel_arm", "total_accel_forearm", "total_accel_dumbbell")], y = train$classe, plot = "pairs")
+#ID principle components for training set
+log.train <-log(abs(train[,8:59]))
+train.pca <- prcomp(train[,8:59], center = TRUE, scale. = TRUE) 
+print(train.pca)
+summary(train.pca)
+head(train.pca, n = 3)
+
+dim(train.pca$x)
+linearFit <- lm(classe ~ train.pca$x[,1] + train.pca$x[,2], data=train)
+
+#try using step function to ID predictors
+train$classe <- as.character(train$classe)
+mrm <- lm(classe~., data = train[,8:60])
+summary(train[,8:60])
+summary(mrm)
+
+# turn on parallel processing to help improve performance
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+
+#try boosting models
+modgbm <- train(classe ~., method = "gbm", data = train[,8:60])
+library(ada)
+
+#try tree model
+modtree <- train(classe ~., method = "rpart", data = train[,8:60], verbose = FALSE) #did not work
+
+#ID principal components using caret
+preProc <- preProcess(train[,8:59], method = c("center", "scale", "pca"), pcaComp = 2)
+trainPC <- predict(preProc, train[,8:59])
+modelFit <- train(train$classe ~ ., method = "gbm", data = trainPC)
 
 
 M <- abs(cor(train[,8:59])) # find correlation b/t all variables except record number, user_name, timestamp columns and classe column
@@ -84,13 +115,11 @@ validation <- train[-inTrain,]
 fitControl <- trainControl(method = "none")
 tgrid <- expand.grid(mtry=c(6)) 
 
-# turn on parallel processing to help improve performance
-cluster <- makeCluster(detectCores() - 1)
-registerDoParallel(cluster)
+
 
 #preProc <- preProcess(train2[,8:59], method = "pca", pcaComp = 6)
 trainPC <- predict(preProc, train2[,8:59])
-#modelFit <- train(train2$classe ~ ., data = trainPC, method = "rf", prox = TRUE) #  verbose = FALSE, trControl = fitControl, tuneGrid = tgrid)
+#modelFit <- train(train2$classe ~ ., data = trainPC, method = "rf", prox = TRUE) #  verbose = FALSE, trControl = fitClontrol, tuneGrid = tgrid)
 
 train2TestInx <- createDataPartition(y=train2$classe, p=.05, list = FALSE)
 train2Test <- train2[train2TestInx,]

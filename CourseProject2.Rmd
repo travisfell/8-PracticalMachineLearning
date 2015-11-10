@@ -38,22 +38,31 @@ Notably, in the train data set, about 25% of the records indicate a correctly do
 train <- train[sapply(train, function(x) !any(is.na(x)))] 
 test <- test[sapply(test, function(x) !any(is.na(x)))]
 
-summary(train)
-dim(train)
-
 # find columns with more than 15% of rows = 0 and remove
   zerotest <<- NULL
   for(i in 1:length(train))
     {
     zerotest <<- c(zerotest, nrow(train[train[,i] == 0,])/nrow(train))
+    #train[,i] <- suppressWarnings(as.numeric(train[,i]))
   }
 removecols <- colnames(train[,which(zerotest >.15)])
 train[,removecols] <- list(NULL)
+test[,removecols] <- list(NULL)
 
 # find records with any 0 values and remove
-#replace all zeros w/NA
 train[train == 0] <- NA
 train <- train[complete.cases(train),]
+
+# only use accel columns as predictors
+train2 <- select(train, contains("accel"))
+train2 <- cbind(train2, train$classe)
+colnames(train2)[17] <- "classe"
+train <- train2
+rm(train2)
+
+#prepare test set for accel columns
+test <- select(test, contains("accel"))
+
 
 ```
 
@@ -87,13 +96,10 @@ linearFit <- lm(classe ~ train.pca$x[,1] + train.pca$x[,2], data=train)
 
 #set up a multiple linear regression
 train$classe <- as.character(train$classe)
+mrm <- lm(classe ~ total_accel_belt, data = train)
+# START HERE: try creating dummy variables for classe
+str(train$classe)
 
-which(is.infinite(train[,1:53]))
-
-mrm <- lm(classe~., data = train[,8:53])
-summary(train[,8:53])
-str(train[,8:53])
-summary(mrm)
 
 # turn on parallel processing to help improve performance
 cluster <- makeCluster(detectCores() - 1)
