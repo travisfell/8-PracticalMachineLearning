@@ -96,8 +96,11 @@ linearFit <- lm(classe ~ train.pca$x[,1] + train.pca$x[,2], data=train)
 
 #set up a multiple linear regression
 train$classe <- as.character(train$classe)
-mrm <- lm(classe ~ total_accel_belt, data = train)
 # START HERE: try creating dummy variables for classe
+dummyvar <- dummy(classe, train)
+mrm <- lm(classe ~ total_accel_belt, data = train)
+
+
 str(train$classe)
 
 
