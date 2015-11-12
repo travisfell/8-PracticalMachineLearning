@@ -38,6 +38,8 @@ Notably, in the train data set, about 25% of the records indicate a correctly do
 train <- train[sapply(train, function(x) !any(is.na(x)))] 
 test <- test[sapply(test, function(x) !any(is.na(x)))]
 
+# might use nearZeroVar() here instead
+
 # find columns with more than 15% of rows = 0 and remove
   zerotest <<- NULL
   for(i in 1:length(train))
@@ -84,24 +86,26 @@ Because there are nearly 60 different non-NA variables in this data, we will do 
 
 
 ```{r}
-#ID principle components for training set
-log.train <-log(abs(train[,8:59]))
-train.pca <- prcomp(train[,8:59], center = TRUE, scale. = TRUE) 
-print(train.pca)
-summary(train.pca)
-head(train.pca, n = 3)
 
-dim(train.pca$x)
-linearFit <- lm(classe ~ train.pca$x[,1] + train.pca$x[,2], data=train)
 
 #set up a multiple linear regression
-train$classe <- as.character(train$classe)
-# START HERE: try creating dummy variables for classe
-dummyvar <- dummy(classe, train)
-mrm <- lm(classe ~ total_accel_belt, data = train)
 
+table(train$classe)
 
-str(train$classe)
+# create new classe2 column to store numeric values equivalent to the original classe varible
+train$classe2 <- NA
+train$classe2[train$classe == 'A'] <- 1
+train$classe2[train$classe == 'B'] <- 2
+train$classe2[train$classe == 'C'] <- 3
+train$classe2[train$classe == 'D'] <- 4
+train$classe2[train$classe == 'E'] <- 5
+train$classe <- train$classe2
+train$classe2 <- NULL
+
+mrm <- train(classe ~ ., method = "lm", data = train)
+mrm$finalModel
+predTest <- predict(mrm, test)
+summary(predTest)
 
 
 # turn on parallel processing to help improve performance
