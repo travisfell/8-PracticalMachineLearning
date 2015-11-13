@@ -17,23 +17,23 @@ library(randomForest)
 library(ggplot2)
 library(plyr)
 library(dplyr)
+library(GGally)
 library(parallel, quietly=T)
 library(doParallel, quietly=T)
 train <- read.csv("pml-training.csv", stringsAsFactors = FALSE, na.strings=c("", "NA"))
 test <- read.csv("pml-testing.csv", stringsAsFactors = FALSE, na.strings=c("", "NA"))
 train$classe <- as.factor(train$classe)
-str(train)
-summary(train)
-View(train)
-colnames(train)
-View(test)
-table(train$classe)
-count(train, classe)
+#str(train)
+#summary(train)
+#table(train$classe)
 
-```
-Notably, in the train data set, about 25% of the records indicate a correctly done exercise. Also, there are a large number of columns with NA in almost all records. So, we are going to remove those for this analysis.
 
-```{r}
+#reducing the data set 
+
+#remove first 7 columns from both data sets as they are only informational about the subjects and test
+train <- train[,8:160]
+test <- test[,8:160]
+
 # filter out columns with majority NA values
 train <- train[sapply(train, function(x) !any(is.na(x)))] 
 test <- test[sapply(test, function(x) !any(is.na(x)))]
@@ -55,44 +55,7 @@ test[,removecols] <- list(NULL)
 train[train == 0] <- NA
 train <- train[complete.cases(train),]
 
-# only use accel columns as predictors
-train2 <- select(train, contains("accel"))
-train2 <- cbind(train2, train$classe)
-colnames(train2)[17] <- "classe"
-train <- train2
-rm(train2)
-
-#prepare test set for accel columns
-test <- select(test, contains("accel"))
-
-
-```
-
-#III. Predicting Results
-Now we will set about constructing our model and making predictions using that model.
-
-# Defining the Question
-This analysis sets out to answer the question posed by the assignment: given the way a participant does an exercise, will they do it correctly? To perform this analysis, we will examine the training data set to identify the the predictors of a correctly executed barbell lift, validate the model against a subset of the training set, then run the model against the test set. 
-
-1. Question
-2. Input Data
-3. Features
-4. Algorithm
-5. Parameters
-6. Evaluation
-
-## Selecting Predictors
-Because there are nearly 60 different non-NA variables in this data, we will do some preprocessing with principal components analysis to find and combine like variables. 
-
-
-```{r}
-
-
-#set up a multiple linear regression
-
-table(train$classe)
-
-# create new classe2 column to store numeric values equivalent to the original classe varible
+# create new classe column to store numeric values equivalent to the original classe varible
 train$classe2 <- NA
 train$classe2[train$classe == 'A'] <- 1
 train$classe2[train$classe == 'B'] <- 2
@@ -101,74 +64,55 @@ train$classe2[train$classe == 'D'] <- 4
 train$classe2[train$classe == 'E'] <- 5
 train$classe <- train$classe2
 train$classe2 <- NULL
+train$classe <- as.integer(train$classe)
 
-mrm <- train(classe ~ ., method = "lm", data = train)
-mrm$finalModel
-predTest <- predict(mrm, test)
-summary(predTest)
-
-
-# turn on parallel processing to help improve performance
-cluster <- makeCluster(detectCores() - 1)
-registerDoParallel(cluster)
-
-#try boosting models
-modgbm <- train(classe ~., method = "gbm", data = train[,8:60])
-library(ada)
-
-#try tree model
-modtree <- train(classe ~., method = "rpart", data = train[,8:60], verbose = FALSE) #did not work
-
-#ID principal components using caret
-preProc <- preProcess(train[,8:59], method = c("center", "scale", "pca"), pcaComp = 2)
-trainPC <- predict(preProc, train[,8:59])
-modelFit <- train(train$classe ~ ., method = "gbm", data = trainPC)
+#find correlations in remaining features to ID add'l variables to exclude
+traincor <- findCorrelation(cor(train), cutof = .8, verbose = FALSE)
+train <- train[,-traincor] #exclude 1 feature from each pair of highly correlated features from training set
+test <- test[, -traincor] #exclude same features from test set
 
 
-M <- abs(cor(train[,8:59])) # find correlation b/t all variables except record number, user_name, timestamp columns and classe column
-diag(M) <- 0
-pred <- which(M >.8, arr.ind = TRUE)
-highCorVar <- unique(pred[,2])
-highCorVar <- highCorVar + 7 # need to get the column numbers back in sync w/the train set
+#exploring predictors 
+qplot(total_accel_arm, total_accel_dumbbell, color = classe , data = train)
+featurePlot(x = train[,c("total_accel_belt", "total_accel_arm", "total_accel_forearm", "total_accel_dumbbell")], y = train$classe, plot = "pairs")
+featurePlot(x = train[,c(1,5,9,13)], y = train$classe, plot = "pairs")
+qplot(total_accel_arm, classe, data = train)
 
-trainPred <- train[,highCorVar]
-prComp <- prcomp(trainPred)
 
-plot(prComp$x[,1], prComp$x[,2])
+#selecting predictors
+#use all columns with "accel" in name per the assignment your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell 
 
+trainaccel <- select(train, contains("accel"))
+trainaccel <- cbind(trainaccel, train$classe)
+colnames(trainaccel)[length(trainaccel)] <- "classe"
+
+#prepare test set for accel columns
+testaccelcols <- colnames(select(test, contains("accel")))
+testaccel <- subset(test, select = c(testaccelcols, "problem_id"))
+
+#set up a multiple linear regression on acceleration features
+mrmAccel <- train(classe ~ ., method = "lm", data = trainaccel)
+print(mrmAccel)
+finmod <- mrmAccel$finalModel
+print(finmod)
+
+#START HERE
+
+#use the model to predict the validation set and estimate out of sample error
 
 # split the training set into 70/30 training-validation sets
-inTrain <- createDataPartition(train$classe, p = .7, list = FALSE)
+inTrain <- createDataPartition(trainaccel$classe, p = .7, list = FALSE)
 train2 <- train[inTrain,]
 validation <- train[-inTrain,]
 
-
-#need to manage resampling to improve processing speed
-fitControl <- trainControl(method = "none")
-tgrid <- expand.grid(mtry=c(6)) 
-
-
-
-#preProc <- preProcess(train2[,8:59], method = "pca", pcaComp = 6)
-trainPC <- predict(preProc, train2[,8:59])
-#modelFit <- train(train2$classe ~ ., data = trainPC, method = "rf", prox = TRUE) #  verbose = FALSE, trControl = fitClontrol, tuneGrid = tgrid)
-
-train2TestInx <- createDataPartition(y=train2$classe, p=.05, list = FALSE)
-train2Test <- train2[train2TestInx,]
-
-modelFitTest <- train(classe ~ ., data = train2[8:60], method = "rf", preProcess = "pca", prox = TRUE) #trControl = fitControl, tuneGrid = tgrid, prox = TRUE)
-
-modelFitTest3 <- randomForest(classe ~., train2[,8:60])
-
-# turn off parallel processing
-stopCluster(cluster)
-
-print(modelFitTest3)
-
-#use the model to predict the validation set
-validationPred <- predict(modelFitTest3, validation)
+validationPred <- predict(mrmAccel, validation)
 summary(validationPred)
 table(validationPred, validation$classe)
+
+
+#make predictions
+pred_mrmAccel <- predict(mrmAccel, test)
+summary(pred_mrmAccel)
 
 ```
 Which method to use? 
@@ -186,10 +130,6 @@ Cut the training set into a training and validation set.
 
 ## Building the Model
 Note: Follow the longer process from the slides to break down the process into component parts and debug. 
-```{r}
-modelTrain <- train[,8:60]
-modelFit <- train(modelTrain$classe ~ ., method = "glm", preProcess = "pca", data = modelTrain)
-```
 
 ## Estimating Out of Sample Error
 Using the model fit above, we will estimate the out of sample error using the validation set. 
@@ -207,10 +147,22 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 
-You can also embed plots, for example:
+#Appendix: Old Code
+Putting old code here in case I need it again.
 
-```{r, echo=FALSE}
-plot(cars)
+```{r}
+
+# only use accel columns as predictors
+train2 <- select(train, contains("accel"))
+train2 <- cbind(train2, train$classe)
+colnames(train2)[17] <- "classe"
+train <- train2
+rm(train2)
+
+#prepare test set for accel columns
+select(test, contains("accel")))
+testaccelcols <- colnames(select(test, contains("accel")))
+test <- subset(test, select = c(testaccelcols, "problem_id"))
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
