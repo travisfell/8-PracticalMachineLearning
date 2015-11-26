@@ -1,5 +1,5 @@
 # PML quiz 4
-
+setwd("C:/Users/fellt/Desktop/Data Science/Coursera Data Science Specialization/08 - Practical Machine Learning/8-PracticalMachineLearning")
 library(caret)
 library(AppliedPredictiveModeling)
 library(ElemStatLearn)
@@ -20,14 +20,22 @@ vowel.test$y <-as.factor(vowel.test$y)
 set.seed(33833)
 q1rf<- train(y~., data = vowel.train, method = "rf")
 save(q1rf, file = "q1rf.rda")
+#load("q1rf.rda")
 q1PredRF <- predict(q1rf, vowel.test)
 confusionMatrix(vowel.test$y, q1PredRF)
 
 q1gbm<- train(y~., data = vowel.train, method = "gbm", verbose = FALSE)
 save(q1gbm, file = "q1gbm.rda")
+#load("q1bm.rda")
 q1PredGBM <- predict(q1gbm, vowel.test)
 confusionMatrix(vowel.test$y, q1PredGBM)
 
+#to find agreement accuracy, subset the vowel test data frame to include only 
+#the rows where the rf and gbm models gave the same prediction
+AgreeIdx <- which(q1PredRF == q1PredGBM)
+Agree <- vowel.test[AgreeIdx,]
+q1PredAgree <- predict(q1rf, Agree)
+confusionMatrix(Agree$y, q1PredAgree)
 
 # question 2
 library(caret)
@@ -59,7 +67,7 @@ confusionMatrix(testing$diagnosis, q2predComb)$overall
 
 
 # question 3
-
+library(elasticnet)
 set.seed(3523)
 library(AppliedPredictiveModeling)
 data(concrete)
@@ -73,8 +81,10 @@ x <- as.matrix(training[,1:8])
 y <- as.matrix(training[,9])
 #q3mod <- lars(x, y, type = "lasso")
 q3mod <- enet(x, y, lambda = 0)
+#q3mod <- train(y ~ ., data = x, method = "lasso")
 summary(q3mod)
-plot.enet(q3mod)
+q3mod
+plot.enet(q3mod, use.color = TRUE, xvar="penalty")
 
 
 # question 4
@@ -90,6 +100,29 @@ summary(dat)
 str(dat)
 q4mod <- bats(tstrain)
 h <- nrow(testing)
-q4fcast <- forecast(q4mod, h, level = 95)
+q4fcast <- forecast.bats(q4mod, h, level = 95)
+q4fcastTest <- data.frame(q4fcast$lower, q4fcast$upper, testing$visitsTumblr)
+colnames(q4fcastTest) <- c("lower", "upper", "testVisitsTumblr")
+testInFcast <- subset(q4fcastTest, testVisitsTumblr >= lower & testVisitsTumblr <= upper)
+nrow(testInFcast) / nrow(testing)
 
-plot(q4fcast)
+
+# question 5
+library(dplyr)
+set.seed(3523)
+library(AppliedPredictiveModeling)
+data(concrete)
+inTrain = createDataPartition(concrete$CompressiveStrength, p = 3/4)[[1]]
+training = concrete[ inTrain,]
+testing = concrete[-inTrain,]
+set.seed(325)
+q5mod <- svm(CompressiveStrength ~ ., data = training)
+summary(q5mod)
+q5pred <- predict(q5mod, testing)
+confusionMatrix(testing$CompressiveStrength, q5pred)
+q5predTest <- data.frame(q5pred, testing$CompressiveStrength)
+q5predTest <- mutate(q5predTest, error = q5pred - testing.CompressiveStrength)
+q5predTest <- mutate(q5predTest, sqerror = error^2)
+q5predTestMSE <- mean(q5predTest$sqerror)
+q5predTestRMSE <- sqrt(q5predTestMSE)
+RMSE(q5pred, testing$CompressiveStrength)
